@@ -14,7 +14,7 @@ from torch.optim import Adam
 import wandb
 from losses import get_loss_fn
 from metrics import cal_overlap_auc, spearman_corr
-from search import adam_search, grad_search
+from search import adam_search, grad_search,context_guided_search, two_stage_search
 from utils import (
     build_data_loader,
     create_special_dataset_fast_unique,
@@ -99,6 +99,7 @@ def run(args: Namespace):
     # forward_model = SimpleMLP(
     #     input_dim=x.shape[1], hidden_dim=args.hidden_dim, output_dim=args.output_dim
     # ).to(**_TKWARGS)
+
     forward_model = MultKAN(
         # width=[in_dim, [128, 0], [64, 0], [32, 0],[16, 0], out_dim],  # 更平滑的降维
         # width=[in_dim, [64, 0], [32, 0], [16, 0], out_dim],
@@ -131,118 +132,17 @@ def run(args: Namespace):
 
     model_path = f"./model/MLP-{args.loss}-{args.task}-seed{args.seed}.pt"
     if not args.retrain_model and os.path.exists(model_path):
-        print(f"load from ./model/MLP-{args.loss}-{args.task}-seed{args.seed}.pt")
-        forward_model.load_state_dict(torch.load(model_path))
-        y_pred = forward_model(x_elites)
-        prediction = loss_fn.score(y_pred)
-        elite_mse = F.mse_loss(
-            input=prediction.squeeze(), target=y_elites.squeeze(), reduction="mean"
-        ).item()
-        elite_rank_corr = spearman_corr(prediction, y_elites).item()
-        elite_auc_pr = cal_overlap_auc(prediction, y_elites)
+        model_path = f"{args.task}_{args.seed}"
+        forward_model = KAN.loadckpt(f'./{model_path}')
 
     else:
-
-        # for epoch in range(args.n_epochs):
-        #     statistics = {}
-        #     total_loss = 0
-        #
-        #     forward_model.train()
-        #     for i, (x_batch, y_batch) in enumerate(train_loader):
-        #         optimizer.zero_grad()
-        #         x_batch = x_batch.to(**_TKWARGS)
-        #         y_batch = y_batch.to(**_TKWARGS)
-        #
-        #         y_pred = forward_model(x_batch)
-        #         loss = loss_fn(y_pred.squeeze(), y_batch.squeeze())
-        #
-        #         loss.backward()
-        #         optimizer.step()
-        #
-        #         total_loss += loss.item()
-        #
-        #     train_loss = total_loss / len(train_loader)
-        #
-        #     statistics["train_loss"] = train_loss
-        #
-        #     print(f"Epoch [{epoch+1}/{args.n_epochs}]: Loss = {train_loss}")
-        #
-        #     forward_model.eval()
-        #     total_loss = 0
-        #     with torch.no_grad():
-        #         for i, (x_batch, y_batch) in enumerate(validate_loader):
-        #             x_batch = x_batch.to(**_TKWARGS)
-        #             y_batch = y_batch.to(**_TKWARGS)
-        #
-        #             y_pred = forward_model(x_batch)
-        #             loss = loss_fn(y_pred.squeeze(), y_batch.squeeze())
-        #
-        #             total_loss += loss.item()
-        #
-        #         validate_loss = total_loss / len(validate_loader)
-        #         statistics["validate_loss"] = validate_loss
-        #         print(f"Validation Loss: {validate_loss}")
-        #
-        #         if validate_loss < min_loss:
-        #             print("🌸 New best epoch! 🌸")
-        #             torch.save(
-        #                 forward_model.state_dict(),
-        #                 f"model/MLP-{args.loss}-{args.task}-seed{args.seed}.pt",
-        #             )
-        #             best_state_dict = forward_model.state_dict()
-        #             min_loss = validate_loss
-        #
-        #         y_all = torch.zeros((0, 1)).to(**_TKWARGS)
-        #         predcition_all = torch.zeros((0, 1)).to(**_TKWARGS)
-        #         total_mse = 0
-        #         total_rank_corr = 0
-        #
-        #         for i, (x_batch, y_batch) in enumerate(iid_loader):
-        #             x_batch = x_batch.to(**_TKWARGS)
-        #             y_batch = y_batch.to(**_TKWARGS)
-        #
-        #             pred = forward_model(x_batch)
-        #             total_mse += F.mse_loss(
-        #                 input=pred.squeeze(), target=y_batch.squeeze(), reduction="mean"
-        #             ).item()
-        #
-        #             total_rank_corr += spearman_corr(pred, y_batch).item()
-        #
-        #             if epoch % 50 == 0 or epoch == args.n_epochs - 1:
-        #                 y_all = torch.cat((y_all, y_batch), dim=0)
-        #                 predcition_all = torch.cat((predcition_all, pred), dim=0)
-        #
-        #         iid_mse = total_mse / len(iid_loader)
-        #         iid_rank_corr = total_rank_corr / len(iid_loader)
-        #         statistics["iid/mse"] = iid_mse
-        #         statistics["iid/rank_corr"] = iid_rank_corr
-        #
-        #         if epoch % 50 == 0 or epoch == args.n_epochs - 1:
-        #             iid_auc_pr = cal_overlap_auc(predcition_all, y_all)
-        #             statistics["iid/AUC-PR"] = iid_auc_pr
-        #
-        #         if args.eval_elites:
-        #             y_pred = forward_model(x_elites)
-        #             prediction = loss_fn.score(y_pred)
-        #             elite_mse = F.mse_loss(
-        #                 input=prediction.squeeze(),
-        #                 target=y_elites.squeeze(),
-        #                 reduction="mean",
-        #             ).item()
-        #             elite_rank_corr = spearman_corr(prediction, y_elites).item()
-        #             elite_auc_pr = cal_overlap_auc(prediction, y_elites)
-        #
-        #             statistics["elite/mse"] = elite_mse
-        #             statistics["elite/rank_corr"] = elite_rank_corr
-        #             statistics["elite/AUC-PR"] = elite_auc_pr
-        #
-        #     statistics["learning_rate"] = optimizer.param_groups[0]["lr"]
-        #
-        #     if args.use_wandb:
-        #         wandb.log(statistics)
-        forward_model.fit(train_loader,validate_loader,iid_loader, x_elites, y_elites, args,opt="adam", steps=100, device='cuda',
+        forward_model.fit(train_loader,validate_loader,iid_loader, x_elites, y_elites, args,opt="adam", steps=100, update_grid=False
+                          , device='cuda',
                           temperature=args.contrastive_temperature)
-
+        model_path = f"{args.task}_{args.seed}"
+        forward_model.saveckpt(f"./{model_path}")
+        # forward_model.loadckpt("./my_model")
+        logger.info("model save success!")
     if args.loss != "mse":
         pred_all = []
         for x_batch, _ in iid_loader:
@@ -294,6 +194,56 @@ def run(args: Namespace):
                 else args.x_opt_step["continuous"]
             ),
         )
+    elif args.x_opt_method.lower() == "context":
+        x_res = context_guided_search(
+            x_init=x_init,
+            forward_model=forward_model,
+            score_fn=lambda out: (loss_fn.score(out) - pred_mean) / pred_std,
+            x_opt_lr=(args.x_opt_lr["discrete"] if task.is_discrete else args.x_opt_lr["continuous"]),
+            x_opt_step=(args.x_opt_step["discrete"] if task.is_discrete else args.x_opt_step["continuous"]),
+            context_data=torch.from_numpy(x).to(**_TKWARGS),
+            n_contexts=5,  # 可调: 每步采样的上下文数量
+            context_size=10,  # 可调: 每个上下文列表的长度（含候选）
+            max_radius=1.0  # 可调: 限制L2范围阈值
+        )
+    elif args.x_opt_method.lower() == "context2stage":
+        # 这里的 score_fn 和前面保持一致
+        score_fn = lambda out: (loss_fn.score(out) - pred_mean) / pred_std
+
+        # 把原始训练 x 作为 context_data
+        context_data_tensor = torch.from_numpy(x).to(**_TKWARGS)
+        x_res, x_res_stage1, x_res_stage2 = two_stage_search(
+            x_init=x_init,
+            forward_model=forward_model,
+            score_fn=score_fn,
+            context_data=context_data_tensor,
+            context_search_fn=context_guided_search,
+            x_opt_lr_stage1=(
+                args.x_opt_lr["discrete"]
+                if task.is_discrete
+                else args.x_opt_lr["continuous"]
+            ),
+            x_opt_step_stage1=(
+                args.x_opt_step["discrete"]
+                if task.is_discrete
+                else args.x_opt_step["continuous"]
+            ),
+            n_contexts=args.n_contexts, # 3
+            context_size=args.context_size, # 8
+            max_radius=args.max_radius,  # 这一阶段保持稳
+            topk_for_stage2=args.topk_for_stage2,  # 对 top-10 再冲一波
+            x_opt_lr_stage2=(
+                                args.x_opt_lr["discrete"]
+                                if task.is_discrete
+                                else args.x_opt_lr["continuous"]
+                            ) * 1.5,
+            x_opt_step_stage2=(
+                                  args.x_opt_step["discrete"]
+                                  if task.is_discrete
+                                  else args.x_opt_step["continuous"]
+                              ) * 2,
+        )
+
     else:
         raise NotImplementedError("unknown search method")
 
@@ -304,6 +254,7 @@ def run(args: Namespace):
     if task.is_discrete:
         x_res = task.to_integers(x_res)
 
+    forward_model.saveckpt("my_model")
     score = task.predict(x_res)
     score_100th = np.max(score)
     score_50th = np.median(score)
@@ -357,7 +308,7 @@ def run(args: Namespace):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", type=str, default="AntMorphology-Exact-v0")
+    parser.add_argument("--task", type=str, default="DKittyMorphology-Exact-v0")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument(
         "--loss",
@@ -386,8 +337,14 @@ if __name__ == "__main__":
     parser.add_argument("--contrastive-weight", type=float, default=0.1)
     parser.add_argument("--contrastive-top-frac", type=float, default=0.2,
                         help="每个 list 内取前 top_frac 作为‘好样本’")
+    parser.add_argument("--n_contexts", type=int, default=5)
+    parser.add_argument("--context_size", type=int, default=12)
+    parser.add_argument("--max_radius", type=float, default=1.0)
     parser.add_argument("--contrastive-temperature", type=float, default=0.1)
+    parser.add_argument("--topk_for_stage2", type=int, default=16)
+
     args = parser.parse_args()
+
 
     default_config = load_default_config(args.loss)
     default_config.update(args.__dict__)

@@ -30,5 +30,5 @@ x_opt_lr:
   continuous: 0.001
 x_opt_step: 
   discrete: 100 
-  continuous: 200
-x_opt_method: Adam
+  continuous: 80
+x_opt_method: context2stage
