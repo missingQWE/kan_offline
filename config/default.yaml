@@ -26,9 +26,9 @@ weight_decay: 0.00001
 output_dim: 1
 
 x_opt_lr: 
-  discrete: 0.1
-  continuous: 0.001
+  discrete: 0.006
+  continuous: 0.005
 x_opt_step: 
-  discrete: 100 
+  discrete: 120
   continuous: 80
 x_opt_method: context2stage

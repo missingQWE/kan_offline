@@ -121,7 +121,7 @@ def run(args: Namespace):
     #     k=2,
     #     device="cuda",
     # )
-
+    #forward_model = KAN.loadckpt("./my_model")
     loss_fn = get_loss_fn(args.loss, **args.loss_config)
     optimizer = Adam(
         params=forward_model.parameters(), lr=args.lr, weight_decay=args.weight_decay
@@ -142,7 +142,7 @@ def run(args: Namespace):
         model_path = f"{args.task}_{args.seed}"
         forward_model.saveckpt(f"./{model_path}")
         # forward_model.loadckpt("./my_model")
-        logger.info("model save success!")
+        logger.info("load model  success!")
     if args.loss != "mse":
         pred_all = []
         for x_batch, _ in iid_loader:
@@ -308,7 +308,7 @@ def run(args: Namespace):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", type=str, default="DKittyMorphology-Exact-v0")
+    parser.add_argument("--task", type=str, default="TFBind10-Exact-v0")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument(
         "--loss",
@@ -334,8 +334,8 @@ if __name__ == "__main__":
     parser.add_argument("--wandb-api", type=str, default="5de2382d75ca4c87e8a090d9a1781d662651e6b2", help="WandB API key")
     parser.add_argument("--retrain-model", action="store_true", default=False)
     parser.add_argument("--expt-name", type=str, default="")
-    parser.add_argument("--contrastive-weight", type=float, default=0.1)
-    parser.add_argument("--contrastive-top-frac", type=float, default=0.2,
+    parser.add_argument("--contrastive-weight", type=float, default=0.2)
+    parser.add_argument("--contrastive-top-frac", type=float, default=0.3,
                         help="每个 list 内取前 top_frac 作为‘好样本’")
     parser.add_argument("--n_contexts", type=int, default=5)
     parser.add_argument("--context_size", type=int, default=12)
